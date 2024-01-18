@@ -1,5 +1,5 @@
 # Black-Box Property Inference Attacks
-Version 0.1
+Version 0.2
 ## Setup
 * Locally (in virtual environment):
 `pip install -r requirements.txt`
@@ -24,8 +24,3 @@ nano ~/.local/share/jupyter/kernels/pia-tf/kernel.json
 * Finetuning of adversary training has been done in `tune_adversary.ipynb`
 ### Loading and using the adversary
 * See `pia.ipynb`
-
----
-### Coming up in next version 0.2:
-* adversary training with less redundant training data
-* synthetic data with proper header in file
