@@ -9,6 +9,19 @@ from joblib import Parallel, delayed
 class DatasetWithForcedDistribution:
     def __init__(self, sensitive_attribute_name, distribution, X_train, X_test, y_train, y_test, sensitive,
                  sensitive_t):
+        """
+        Represents a dataset with a forced distribution of a sensitive attribute.
+
+        Args:
+            sensitive_attribute_name (str): The name of the sensitive attribute.
+            distribution (float): The target distribution of the sensitive attribute.
+            X_train (pandas.DataFrame): The training features.
+            X_test (pandas.DataFrame): The testing features.
+            y_train (pandas.Series): The training labels.
+            y_test (pandas.Series): The testing labels.
+            sensitive (numpy.ndarray): The values of the sensitive attribute in the training set.
+            sensitive_t (numpy.ndarray): The values of the sensitive attribute in the testing set.
+        """
         self.sensitive_attribute_name = sensitive_attribute_name
         self.distribution = distribution
         self.X_train = X_train
@@ -20,10 +33,30 @@ class DatasetWithForcedDistribution:
 
 
 def drop_index(df, idx):
+    """
+    Drop rows from a DataFrame based on their index.
+
+    Args:
+        df (pandas.DataFrame): The DataFrame to drop rows from.
+        idx (int or list): The index or indices of the rows to drop.
+
+    Returns:
+        pandas.DataFrame: The DataFrame with the specified rows dropped.
+    """
     return df.reset_index().drop(index=idx).drop(columns=["index"])
 
 
 def find_indices_to_drop(sensitive, target_distribution):
+    """
+    Find the indices of rows to drop in order to achieve a target distribution of a sensitive attribute.
+
+    Args:
+        sensitive (numpy.ndarray): The values of the sensitive attribute.
+        target_distribution (float): The target distribution of the sensitive attribute.
+
+    Returns:
+        list: The indices of rows to drop.
+    """
     length = len(sensitive)
     indices_to_drop = []
 
@@ -50,6 +83,15 @@ def find_indices_to_drop(sensitive, target_distribution):
 
 
 def data_train_test(train_size=0.5):
+    """
+    Split the adult dataset into training and testing sets.
+
+    Args:
+        train_size (float): The proportion of the dataset to include in the training set.
+
+    Returns:
+        tuple: A tuple containing the training and testing features and labels, as well as the values of the sensitive attribute.
+    """
     adult_df = pd.read_csv("data/census_data_oh.csv").drop(columns=["sex_Female", "income_<=50K"])
     y = adult_df["income_>50K"]
     X_train, X_test, y_train, y_test = train_test_split(adult_df.drop(columns=["income_>50K"]), y, train_size=train_size, random_state=0)
@@ -59,6 +101,15 @@ def data_train_test(train_size=0.5):
 
 
 def get_distributed_adult_sets(distributions=None):
+    """
+    Generate datasets with forced distributions of the sensitive attribute.
+
+    Args:
+        distributions (list): A list of target distributions. If None, default distributions will be used.
+
+    Returns:
+        list: A list of DatasetWithForcedDistribution objects representing the generated datasets.
+    """
     if distributions is None:
         distributions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     all_datasets = []
@@ -85,22 +136,59 @@ def get_distributed_adult_sets(distributions=None):
 
 
 def train_gradient_boosting_shadow_model(X_train, y_train, random_state):
-    gb = GradientBoostingClassifier(n_estimators=500, learning_rate = 0.05, max_depth = 3, max_features=90,random_state=random_state,  min_impurity_decrease=0.0,
+    """
+    Train a gradient boosting shadow model.
+
+    Args:
+        X_train (pandas.DataFrame): The training features.
+        y_train (pandas.Series): The training labels.
+        random_state (int): The random state for reproducibility.
+
+    Returns:
+        GradientBoostingClassifier: The trained gradient boosting model.
+    """
+    gb = GradientBoostingClassifier(n_estimators=500, learning_rate=0.05, max_depth=3, max_features=90, random_state=random_state, min_impurity_decrease=0.0,
                                     min_samples_leaf=2, min_samples_split=2,
                                     min_weight_fraction_leaf=0.0)
     return gb.fit(X_train, y_train)
 
 
 def train_and_generate_output(X_train, y_train, shadow_input, output_probability, random_state=0):
+    """
+    Train a shadow model and generate its outputs.
+
+    Args:
+        X_train (pandas.DataFrame): The training features.
+        y_train (pandas.Series): The training labels.
+        shadow_input (pandas.DataFrame): The input to the shadow model.
+        output_probability (bool): Whether to output probabilities or predictions.
+        random_state (int): The random state for reproducibility.
+
+    Returns:
+        numpy.ndarray: The outputs of the shadow model.
+    """
     shadow_model = train_gradient_boosting_shadow_model(X_train, y_train, random_state=random_state)
     if output_probability:
         output = shadow_model.predict_proba(shadow_input)
     else:
         output = shadow_model.predict(shadow_input)
-    return output[:,0]
+    return output[:, 0]
 
 
 def generate_shadow_model_outputs(dataset: DatasetWithForcedDistribution, shadow_input, n_shadow_models=100, use_test_data=False, output_probability=True):
+    """
+    Generate outputs of shadow models for a given dataset.
+
+    Args:
+        dataset (DatasetWithForcedDistribution): The dataset with forced distribution of the sensitive attribute.
+        shadow_input (pandas.DataFrame): The input to the shadow models.
+        n_shadow_models (int): The number of shadow models to generate outputs from.
+        use_test_data (bool): Whether to use the testing data or training data.
+        output_probability (bool): Whether to output probabilities or predictions.
+
+    Returns:
+        list: A list of outputs from the shadow models.
+    """
     if use_test_data:
         X = dataset.X_test
         y = dataset.y_test
