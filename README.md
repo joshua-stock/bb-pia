@@ -12,7 +12,9 @@ pip install pandas numpy tensorflow keras-tuner
 conda deactivate && python -m ipykernel install --user --name pia-tf
 nano ~/.local/share/jupyter/kernels/pia-tf/kernel.json
 ```
-(last command: add the kernel manually in case it has not been added to list)
+last command: add the kernel manually in case it has not been added to list.
+Make sure to change the path to the python executable to the one in the conda environment
+(e.g. `/home/username/anaconda3/envs/pia-tf/bin/python`).
 
 ### Create synthetic data for genereting model output
 * see `generate-synthetic-data.py`
