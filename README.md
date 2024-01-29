@@ -8,7 +8,7 @@ Version 0.2
 conda create --name "pia-tf" python=3.10.9 ipython
 conda activate pia-tf
 conda install jupyter pip
-pip install pandas numpy tensorflow keras-tuner
+pip install pandas numpy tensorflow keras-tuner scikit-learn
 conda deactivate && python -m ipykernel install --user --name pia-tf
 nano ~/.local/share/jupyter/kernels/pia-tf/kernel.json
 ```
