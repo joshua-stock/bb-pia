@@ -27,10 +27,10 @@ def generate_synthetic_data(save_path, use_existing_model: bool = True, output_s
 
         syn_model = CTGANSynthesizer(metadata)
         syn_model.fit(to_fit)
-        syn_model.save('syn_model')
+        syn_model.save('models/syn_model')
     else:
         # in case there are problems with loading the model, try downgrading via pip install sdv==1.5
-        syn_model = CTGANSynthesizer.load('syn_model')
+        syn_model = CTGANSynthesizer.load('models/syn_model')
 
     sampled = syn_model.sample(num_rows=output_size)
 
