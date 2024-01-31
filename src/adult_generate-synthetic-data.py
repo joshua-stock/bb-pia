@@ -1,6 +1,6 @@
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import CTGANSynthesizer
-from pia_functions import data_train_test
+from adult_functions import data_train_test
 import pandas as pd
 import numpy as np
 
@@ -27,10 +27,10 @@ def generate_synthetic_data(save_path, use_existing_model: bool = True, output_s
 
         syn_model = CTGANSynthesizer(metadata)
         syn_model.fit(to_fit)
-        syn_model.save('models/syn_model')
+        syn_model.save('adult/models/syn_model')
     else:
         # in case there are problems with loading the model, try downgrading via pip install sdv==1.5
-        syn_model = CTGANSynthesizer.load('models/syn_model')
+        syn_model = CTGANSynthesizer.load('adult/models/syn_model')
 
     sampled = syn_model.sample(num_rows=output_size)
 
@@ -41,5 +41,5 @@ def generate_synthetic_data(save_path, use_existing_model: bool = True, output_s
 
 
 if __name__ == "__main__":
-    synthetic_data = generate_synthetic_data(save_path = "data/syn_data-new.csv", use_existing_model=True, output_size=10000)
+    synthetic_data = generate_synthetic_data(save_path = "adult/data/syn_data-new.csv", use_existing_model=True, output_size=10000)
     print("generating synthetic data done.")
