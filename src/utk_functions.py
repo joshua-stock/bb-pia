@@ -2,14 +2,16 @@ import os
 
 import numpy as np
 from common.functions import find_indices_to_drop, DatasetWithForcedDistribution
-from keras.applications import MobileNetV3Small
+from joblib import delayed, Parallel
+from keras import Sequential
 from keras.applications.mobilenet import preprocess_input
-from keras.layers import Dense, Dropout, GlobalAveragePooling2D
-from keras.losses import CategoricalCrossentropy
-from keras.models import Model
-from keras.optimizers import AdamW
-from keras.src.applications.efficientnet import EfficientNetB0
+from keras.layers import Dense, Flatten
+from keras.src.layers import RandomFlip, Conv2D, GroupNormalization, MaxPooling2D
+from keras.src.losses import CategoricalCrossentropy
+from keras.src.optimizers import Adam
+from keras.src.utils import set_random_seed
 from keras.utils import load_img, img_to_array, to_categorical
+from numpy import random
 from sklearn.model_selection import train_test_split
 
 
@@ -41,14 +43,8 @@ def get_utkface_gender_prediction_dataset(files_dir):
         image_path = os.path.join(files_dir, file)
         rgb_image = load_img(image_path, target_size=(64, 64))
         x = img_to_array(rgb_image)
-        #x = np.expand_dims(x, axis=0)
         x = preprocess_input(x)
         X.append(x)
-
-
-    # normalize data
-    #X = X.astype('float32')
-    #X /= 255
 
     Y = to_categorical(gender_classes, num_classes=2)
     X = np.asarray(X)
@@ -56,55 +52,66 @@ def get_utkface_gender_prediction_dataset(files_dir):
     return X, Y, onlyfiles
 
 
-def head_model(base_model, n_classes):
-    top_model = base_model.output
-    top_model = GlobalAveragePooling2D()(top_model)
-    top_model = Dropout(0.2)(top_model)
-    top_model = Dense(n_classes, activation="softmax")(top_model)
-    return top_model
+def get_lucasnet_model(num_classes=2):
+    groups = 32
+    return Sequential([
+        RandomFlip(
+            "horizontal",
+            seed=42,
+            input_shape=(64, 64, 3),
+        ),
+        Conv2D(
+            filters=32,
+            kernel_size=(3, 3),
+            strides=1,
+            padding="same",
+            activation="relu",
+        ),
+        GroupNormalization(groups=groups),
+        MaxPooling2D(2, 2),
+        Conv2D(
+            filters=32,
+            kernel_size=(3, 3),
+            strides=1,
+            padding="same",
+            activation="relu",
+        ),
+        GroupNormalization(groups=groups),
+        MaxPooling2D(2, 2),
+        Conv2D(
+            filters=64,
+            kernel_size=(3, 3),
+            strides=1,
+            padding="same",
+            activation="relu",
+        ),
+        GroupNormalization(groups=groups),
+        MaxPooling2D(2, 2),
+        Flatten(),
+        Dense(512, activation="relu"),
+        GroupNormalization(groups=groups),
+        Dense(num_classes, activation="softmax"),
+    ])
 
 
-def get_mobilenet_model(num_classes=2):
-    mobilenet_mdl = MobileNetV3Small(
-        include_top=False,
-        input_shape=(64, 64, 3),
-        weights="imagenet",
-        alpha=0.75
-    )
-    model_mobilenet_head = head_model(mobilenet_mdl, num_classes)
-    model_mobilenet = Model(inputs = mobilenet_mdl.input, outputs = model_mobilenet_head)
-    model_mobilenet.compile(
-        optimizer=AdamW(learning_rate=0.0001, weight_decay=0.0001),
+def compile_lucasnet(model):
+    model.compile(
+        optimizer=Adam(),
         loss=CategoricalCrossentropy(),
         metrics=['accuracy']
     )
-    return model_mobilenet
+    return model
 
 
-def get_efficientnet_model(num_classes=2):
-    mobilenet_mdl = EfficientNetB0(
-        include_top=False,
-        input_shape=(64, 64, 3),
-        weights="imagenet"
-    )
-    model_mobilenet_head = head_model(mobilenet_mdl, num_classes)
-    model_mobilenet = Model(inputs = mobilenet_mdl.input, outputs = model_mobilenet_head)
-    model_mobilenet.compile(
-        optimizer=AdamW(learning_rate=0.0001, weight_decay=0.0001),
-        loss=CategoricalCrossentropy(),
-        metrics=['accuracy']
-    )
-    return model_mobilenet
-
-
-def fit_mobilenet(X_train, y_train, X_test, y_test, batch_size=32, epochs=12):
-    model = get_mobilenet_model()
-
+def fit_lucasnet(X_train, y_train, X_test, y_test, batch_size=32, epochs=5, verbose=0):
+    model = get_lucasnet_model()
+    model = compile_lucasnet(model)
     history = model.fit(
         X_train, y_train,
         batch_size=batch_size,
         epochs=epochs,
-        validation_data=(X_test, y_test)
+        validation_data=None if X_test is None else (X_test, y_test),
+        verbose=verbose
     )
     return model, history
 
@@ -171,6 +178,30 @@ def get_distributed_utk_sets(distributions=None):
         )
         all_datasets.append(df)
     return all_datasets
+
+
+def train_and_generate_output(X_train, y_train, shadow_input, save_model_path, model_no=0):
+    random.seed(model_no)
+    set_random_seed(model_no)
+    shadow_model, _ = fit_lucasnet(X_train, y_train, X_test=None, y_test=None)
+    if save_model_path is not None:
+        shadow_model.save(f"{save_model_path}{model_no}.keras")
+    output = shadow_model.predict(shadow_input, verbose=0)
+    return output[:, 0]
+
+
+def generate_shadow_model_outputs(dataset: DatasetWithForcedDistribution, shadow_input, save_model_path, n_shadow_models=100, use_test_data=False):
+    if use_test_data:
+        X = dataset.X_test
+        y = dataset.y_test
+    else:
+        X = dataset.X_train
+        y = dataset.y_train
+
+    parallel_results_generator = Parallel(n_jobs=20)(
+        delayed(train_and_generate_output)(X, y, shadow_input, save_model_path, i) for i in range(n_shadow_models))
+    outputs = list(parallel_results_generator)
+    return outputs
 
 
 def get_lbfw_dataset(lfw_root='utkface/data/lfw-deepfunneled'):
