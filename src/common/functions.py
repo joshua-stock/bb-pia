@@ -1,5 +1,6 @@
 import operator
 import pandas as pd
+import os
 
 
 class DatasetWithForcedDistribution:
@@ -26,6 +27,11 @@ class DatasetWithForcedDistribution:
         self.y_test = y_test
         self.sensitive = sensitive
         self.sensitive_t = sensitive_t
+
+
+def ensure_path_exists(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
 
 
 def drop_index(df, idx):

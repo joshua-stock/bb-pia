@@ -2,19 +2,20 @@ import numpy as np
 import pandas as pd
 
 from utk_functions import get_lbfw_dataset, get_distributed_utk_sets, generate_shadow_model_outputs
+from common.functions import ensure_path_exists
 
 
 def train_shadow_models(test_run, n_shadow_models, distributions, model_input, save_models=True):
     distributed_datasets = get_distributed_utk_sets(distributions=distributions)
     all_shadow_outputs = []
 
-    if save_models:
-        save_model_path = f"utkface/models/shadow_models/{'test' if test_run else 'train'}/"
-    else:
-        save_model_path = None
-
     for ds in distributed_datasets:
         print(f"now generating {ds.distribution}...")
+        if save_models:
+            save_model_path = f"utkface/models/shadow_models/{str(ds.distribution)}/{'test' if test_run else 'train'}/"
+            ensure_path_exists(save_model_path)
+        else:
+            save_model_path = None
         outputs = generate_shadow_model_outputs(ds, model_input, save_model_path, n_shadow_models=n_shadow_models, use_test_data=test_run)
         all_shadow_outputs.append(outputs)
 

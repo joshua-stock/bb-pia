@@ -198,9 +198,10 @@ def generate_shadow_model_outputs(dataset: DatasetWithForcedDistribution, shadow
         X = dataset.X_train
         y = dataset.y_train
 
-    parallel_results_generator = Parallel(n_jobs=20)(
-        delayed(train_and_generate_output)(X, y, shadow_input, save_model_path, i) for i in range(n_shadow_models))
-    outputs = list(parallel_results_generator)
+    #parallel_results_generator = Parallel(n_jobs=20)(
+    #    delayed(train_and_generate_output)(X, y, shadow_input, save_model_path, i) for i in range(n_shadow_models))
+    #outputs = list(parallel_results_generator)
+    outputs = [train_and_generate_output(X, y, shadow_input, save_model_path, i) for i in range(n_shadow_models)]
     return outputs
 
 
