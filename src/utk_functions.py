@@ -5,12 +5,10 @@ from common.functions import find_indices_to_drop, DatasetWithForcedDistribution
 from joblib import delayed, Parallel
 from keras import Sequential
 from keras.applications.mobilenet import preprocess_input
-from keras.layers import Dense, Flatten
-from keras.src.layers import RandomFlip, Conv2D, GroupNormalization, MaxPooling2D
-from keras.src.losses import CategoricalCrossentropy
-from keras.src.optimizers import Adam
-from keras.src.utils import set_random_seed
-from keras.utils import load_img, img_to_array, to_categorical
+from keras.layers import RandomFlip, Conv2D, GroupNormalization, MaxPooling2D, Dense, Flatten
+from keras.losses import CategoricalCrossentropy
+from keras.optimizers import Adam
+from keras.utils import load_img, img_to_array, to_categorical, set_random_seed
 from numpy import random
 from sklearn.model_selection import train_test_split
 
@@ -186,7 +184,8 @@ def train_and_generate_output(X_train, y_train, shadow_input, save_model_path, m
     shadow_model, _ = fit_lucasnet(X_train, y_train, X_test=None, y_test=None)
     if save_model_path is not None:
         shadow_model.save(f"{save_model_path}{model_no}.keras")
-    output = shadow_model.predict(shadow_input, verbose=0)
+    # To save space, we convert the output to float16
+    output = np.array(shadow_model.predict(shadow_input, verbose=0)).astype(np.float16)
     return output[:, 0]
 
 
