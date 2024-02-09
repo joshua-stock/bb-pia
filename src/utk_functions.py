@@ -8,6 +8,7 @@ from keras.applications.mobilenet import preprocess_input
 from keras.layers import RandomFlip, Conv2D, GroupNormalization, MaxPooling2D, Dense, Flatten
 from keras.losses import CategoricalCrossentropy
 from keras.optimizers import Adam
+from keras.src.saving.saving_api import load_model
 from keras.utils import load_img, img_to_array, to_categorical, set_random_seed
 from numpy import random
 from sklearn.model_selection import train_test_split
@@ -178,18 +179,22 @@ def get_distributed_utk_sets(distributions=None):
     return all_datasets
 
 
-def train_and_generate_output(X_train, y_train, shadow_input, save_model_path, model_no=0):
-    random.seed(model_no)
-    set_random_seed(model_no)
-    shadow_model, _ = fit_lucasnet(X_train, y_train, X_test=None, y_test=None)
-    if save_model_path is not None:
-        shadow_model.save(f"{save_model_path}{model_no}.keras")
+def train_and_generate_output(X_train, y_train, shadow_input, load_model_path, save_model_path, model_no=0):
+    if os.path.isfile(f"{load_model_path}{model_no}.keras"):
+        print(f"Loading model {model_no}")
+        shadow_model = load_model(f"{load_model_path}{model_no}.keras")
+    else:
+        random.seed(model_no)
+        set_random_seed(model_no)
+        shadow_model, _ = fit_lucasnet(X_train, y_train, X_test=None, y_test=None)
+        if save_model_path is not None:
+            shadow_model.save(f"{save_model_path}{model_no}.keras")
     # To save space, we convert the output to float16
     output = np.array(shadow_model.predict(shadow_input, verbose=0)).astype(np.float16)
     return output[:, 0]
 
 
-def generate_shadow_model_outputs(dataset: DatasetWithForcedDistribution, shadow_input, save_model_path, n_shadow_models=100, use_test_data=False):
+def generate_shadow_model_outputs(dataset: DatasetWithForcedDistribution, shadow_input, load_model_path, save_model_path, n_shadow_models=100, use_test_data=False):
     if use_test_data:
         X = dataset.X_test
         y = dataset.y_test
@@ -200,7 +205,7 @@ def generate_shadow_model_outputs(dataset: DatasetWithForcedDistribution, shadow
     #parallel_results_generator = Parallel(n_jobs=20)(
     #    delayed(train_and_generate_output)(X, y, shadow_input, save_model_path, i) for i in range(n_shadow_models))
     #outputs = list(parallel_results_generator)
-    outputs = [train_and_generate_output(X, y, shadow_input, save_model_path, i) for i in range(n_shadow_models)]
+    outputs = [train_and_generate_output(X, y, shadow_input, load_model_path, save_model_path, i) for i in range(n_shadow_models)]
     return outputs
 
 
