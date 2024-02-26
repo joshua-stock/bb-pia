@@ -1,13 +1,7 @@
 import os
-
 import numpy as np
-from common.functions import find_indices_to_drop, DatasetWithForcedDistribution
-from joblib import delayed, Parallel
-from keras import Sequential
+from common.functions import find_indices_to_drop, DatasetWithForcedDistribution, fit_lucasnet
 from keras.applications.mobilenet import preprocess_input
-from keras.layers import RandomFlip, Conv2D, GroupNormalization, MaxPooling2D, Dense, Flatten
-from keras.losses import CategoricalCrossentropy
-from keras.optimizers import Adam
 from keras.src.saving.saving_api import load_model
 from keras.utils import load_img, img_to_array, to_categorical, set_random_seed
 from numpy import random
@@ -49,70 +43,6 @@ def get_utkface_gender_prediction_dataset(files_dir):
     X = np.asarray(X)
 
     return X, Y, onlyfiles
-
-
-def get_lucasnet_model(num_classes=2):
-    groups = 32
-    return Sequential([
-        RandomFlip(
-            "horizontal",
-            seed=42,
-            input_shape=(64, 64, 3),
-        ),
-        Conv2D(
-            filters=32,
-            kernel_size=(3, 3),
-            strides=1,
-            padding="same",
-            activation="relu",
-        ),
-        GroupNormalization(groups=groups),
-        MaxPooling2D(2, 2),
-        Conv2D(
-            filters=32,
-            kernel_size=(3, 3),
-            strides=1,
-            padding="same",
-            activation="relu",
-        ),
-        GroupNormalization(groups=groups),
-        MaxPooling2D(2, 2),
-        Conv2D(
-            filters=64,
-            kernel_size=(3, 3),
-            strides=1,
-            padding="same",
-            activation="relu",
-        ),
-        GroupNormalization(groups=groups),
-        MaxPooling2D(2, 2),
-        Flatten(),
-        Dense(512, activation="relu"),
-        GroupNormalization(groups=groups),
-        Dense(num_classes, activation="softmax"),
-    ])
-
-
-def compile_lucasnet(model):
-    model.compile(
-        optimizer=Adam(),
-        loss=CategoricalCrossentropy(),
-        metrics=['accuracy']
-    )
-    return model
-
-
-def fit_lucasnet(X_train, y_train, X_test, y_test, batch_size=32, epochs=5, verbose=0):
-    model = get_lucasnet_model()
-    model = compile_lucasnet(model)
-    history = model.fit(
-        X_train, y_train,
-        batch_size=batch_size,
-        epochs=epochs,
-        validation_data=None if X_test is None else (X_test, y_test),
-        verbose=verbose
-    )
-    return model, history
 
 
 def drop_index_utk(ar, idx):

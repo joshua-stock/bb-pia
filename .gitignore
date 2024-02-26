@@ -4,3 +4,6 @@ __pycache__/
 *__pycache__*
 nohup.out
 
+src/utkface/models/shadow_models
+src/utkface/models/manual_tuning_checkpoints/
+
