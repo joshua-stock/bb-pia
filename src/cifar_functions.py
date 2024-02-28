@@ -80,7 +80,7 @@ def get_cifar_input_set():
     x, y = x[mask], y[mask]
 
     # sample to shrink the dataset
-    x_shrunk, _, _, _ = train_test_split(x, y, test_size=0.5, random_state=0, stratify=y)
+    x_shrunk, _, _, _ = train_test_split(x, y, train_size=0.1, random_state=0, stratify=y)
 
     return x_shrunk
 

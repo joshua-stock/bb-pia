@@ -170,7 +170,8 @@ def train_and_generate_output(X_train, y_train, shadow_input, load_model_path, s
             shadow_model.save(f"{save_model_path}{model_no}.keras")
     # To save space, we convert the output to float16
     output = np.array(shadow_model.predict(shadow_input, verbose=0)).astype(np.float16)
-    return output[:, 0]
+    # from an information theoretic perspective, the last column is redundant
+    return output[:, 0:output.shape[1]-1]
 
 
 def generate_shadow_model_outputs(dataset: DatasetWithForcedDistribution, shadow_input, load_model_path, save_model_path, n_shadow_models=100, use_test_data=False, input_shape=(64, 64, 3), num_classes=2):
@@ -185,6 +186,8 @@ def generate_shadow_model_outputs(dataset: DatasetWithForcedDistribution, shadow
     #    delayed(train_and_generate_output)(X, y, shadow_input, save_model_path, i) for i in range(n_shadow_models))
     #outputs = list(parallel_results_generator)
     outputs = [train_and_generate_output(X, y, shadow_input, load_model_path, save_model_path, i, input_shape, num_classes) for i in range(n_shadow_models)]
+    if num_classes > 2:
+        outputs = np.concatenate(outputs, axis=1)
     return outputs
 
 
