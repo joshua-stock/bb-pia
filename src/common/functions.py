@@ -1,10 +1,15 @@
 import operator
+
+import numpy as np
 import pandas as pd
 import os
 from keras.layers import RandomFlip, Conv2D, GroupNormalization, MaxPooling2D, Dense, Flatten
 from keras.losses import CategoricalCrossentropy
 from keras.optimizers import Adam
 from keras import Sequential, Input
+from keras.src.saving.saving_api import load_model
+from keras.utils import set_random_seed
+from numpy import random
 
 
 class DatasetWithForcedDistribution:
@@ -53,16 +58,6 @@ def drop_index(df, idx):
 
 
 def find_indices_to_drop(sensitive, target_distribution):
-    """
-    Find the indices of rows to drop in order to achieve a target distribution of a sensitive attribute.
-
-    Args:
-        sensitive (numpy.ndarray): The values of the sensitive attribute.
-        target_distribution (float): The target distribution of the sensitive attribute.
-
-    Returns:
-        list: The indices of rows to drop.
-    """
     length = len(sensitive)
     indices_to_drop = []
 
@@ -81,9 +76,20 @@ def find_indices_to_drop(sensitive, target_distribution):
 
     i = 0
     while comp(current_dist(sensitive_value_to_delete), target_distribution):
+        if i >= length:  # If i reaches the length of the sensitive array, raise an exception
+            raise ValueError("Unable to reach target distribution. Not enough entries with the sensitive value to delete.")
         if sensitive[i] == sensitive_value_to_delete:
-            indices_to_drop.append(i)
-        i = i + 1
+            # Calculate the difference between the current and target distributions
+            diff = abs(current_dist(sensitive_value_to_delete) - target_distribution)
+            # If the difference is large, drop multiple entries at once
+            if diff > 0.1:
+                indices_to_drop.extend([i + j for j in range(10) if i + j < length])
+                i += 10
+            else:
+                indices_to_drop.append(i)
+                i += 1
+        else:
+            i += 1
 
     return indices_to_drop
 
@@ -150,3 +156,50 @@ def fit_lucasnet(X_train, y_train, X_test, y_test, batch_size=32, epochs=5, verb
         verbose=verbose
     )
     return model, history
+
+
+def train_and_generate_output(X_train, y_train, shadow_input, load_model_path, save_model_path, model_no, input_shape, num_classes):
+    if os.path.isfile(f"{load_model_path}{model_no}.keras"):
+        print(f"Loading model {model_no}")
+        shadow_model = load_model(f"{load_model_path}{model_no}.keras")
+    else:
+        random.seed(model_no)
+        set_random_seed(model_no)
+        shadow_model, _ = fit_lucasnet(X_train, y_train, X_test=None, y_test=None, input_shape=input_shape, num_classes=num_classes)
+        if save_model_path is not None:
+            shadow_model.save(f"{save_model_path}{model_no}.keras")
+    # To save space, we convert the output to float16
+    output = np.array(shadow_model.predict(shadow_input, verbose=0)).astype(np.float16)
+    return output[:, 0]
+
+
+def generate_shadow_model_outputs(dataset: DatasetWithForcedDistribution, shadow_input, load_model_path, save_model_path, n_shadow_models=100, use_test_data=False, input_shape=(64, 64, 3), num_classes=2):
+    if use_test_data:
+        X = dataset.X_test
+        y = dataset.y_test
+    else:
+        X = dataset.X_train
+        y = dataset.y_train
+
+    #parallel_results_generator = Parallel(n_jobs=20)(
+    #    delayed(train_and_generate_output)(X, y, shadow_input, save_model_path, i) for i in range(n_shadow_models))
+    #outputs = list(parallel_results_generator)
+    outputs = [train_and_generate_output(X, y, shadow_input, load_model_path, save_model_path, i, input_shape, num_classes) for i in range(n_shadow_models)]
+    return outputs
+
+
+def train_shadow_models(test_run, n_shadow_models, distributed_datasets, model_input, input_shape, num_classes, base_path, save_models=True):
+    for ds in distributed_datasets:
+        print(f"now generating {ds.distribution}...")
+        load_model_path = f"{base_path}/models/shadow_models/{str(ds.distribution)}/{'test' if test_run else 'train'}/"
+        if save_models:
+            save_model_path = f"{base_path}/models/shadow_models/{str(ds.distribution)}/{'test' if test_run else 'train'}/"
+            ensure_path_exists(save_model_path)
+        else:
+            save_model_path = None
+        outputs = generate_shadow_model_outputs(ds, model_input, load_model_path, save_model_path, n_shadow_models=n_shadow_models, use_test_data=test_run, input_shape=input_shape, num_classes=num_classes)
+        adv_df = pd.DataFrame(outputs)
+        adv_df["y"] = np.repeat(ds.distribution, n_shadow_models)
+        save_data_path = f"{base_path}/data/shadow_model_outputs/{str(ds.distribution)}/"
+        ensure_path_exists(save_data_path)
+        adv_df.to_csv(f"{save_data_path}{'test' if test_run else 'train'}.csv", index=False)
