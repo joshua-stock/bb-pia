@@ -186,8 +186,7 @@ def generate_shadow_model_outputs(dataset: DatasetWithForcedDistribution, shadow
     #    delayed(train_and_generate_output)(X, y, shadow_input, save_model_path, i) for i in range(n_shadow_models))
     #outputs = list(parallel_results_generator)
     outputs = [train_and_generate_output(X, y, shadow_input, load_model_path, save_model_path, i, input_shape, num_classes) for i in range(n_shadow_models)]
-    if num_classes > 2:
-        outputs = np.array([o.flatten() for o in outputs])
+    outputs = np.array([o.flatten() for o in outputs])
     return outputs
 
 
