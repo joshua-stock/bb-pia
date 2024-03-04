@@ -75,12 +75,14 @@ def get_cifar_input_set():
     x, y = np.concatenate((x_train, x_test), axis=0), np.concatenate((y_train, y_test), axis=0)
 
     # The following indices that have the least similarity to the CIFAR-10 dataset
-    class_indices_to_include = [20, 23, 26, 32, 34, 35, 41, 42, 43, 46, 47, 52, 53, 55, 61, 71, 77, 82, 83, 84, 87, 91, 92, 93, 94, 95, 96, 97, 98, 99]
+    #class_indices_to_include = [20, 23, 26, 32, 34, 35, 41, 42, 43, 46, 47, 52, 53, 55, 61, 71, 77, 82, 83, 84, 87, 91, 92, 93, 94, 95, 96, 97, 98, 99]
+    # This didn't work well. We now try the opposite - class names which have the most similiarity to CIFAR-10
+    class_indices_to_include = [13, 34, 37, 38, 42, 43, 48, 55, 58, 64, 65, 66, 69, 76, 80, 81, 84, 88, 89, 90, 97]
     mask = np.isin(y, class_indices_to_include).flatten()
     x, y = x[mask], y[mask]
 
     # sample to shrink the dataset
-    x_shrunk, _, _, _ = train_test_split(x, y, train_size=0.1, random_state=0, stratify=y)
+    x_shrunk, _, _, _ = train_test_split(x, y, train_size=0.4, random_state=0, stratify=y)
 
     return x_shrunk
 
