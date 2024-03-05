@@ -5,7 +5,7 @@ from common.functions import train_shadow_models
 if __name__ == "__main__":
     base_path = "cifar"  # for saving models and output data
     test_run = False
-    n_shadow_models = 200
+    n_shadow_models = 100
     distributions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     save_models = False
     input_shape = (32, 32, 3)
