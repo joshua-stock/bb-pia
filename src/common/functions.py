@@ -94,9 +94,9 @@ def find_indices_to_drop(sensitive, target_distribution):
     return indices_to_drop
 
 
-def get_lucasnet_model(num_classes, input_shape):
+def get_lucasnet_sequence(num_classes, input_shape):
     groups = 32
-    return Sequential([
+    return [
         Input(shape=input_shape),
         RandomFlip(
             "horizontal",
@@ -133,7 +133,11 @@ def get_lucasnet_model(num_classes, input_shape):
         Dense(512, activation="relu"),
         GroupNormalization(groups=groups),
         Dense(num_classes, activation="softmax"),
-    ])
+    ]
+
+def get_lucasnet_model(num_classes, input_shape):
+    return Sequential(get_lucasnet_sequence(num_classes, input_shape))
+
 
 
 def compile_lucasnet(model):
