@@ -7,9 +7,11 @@ from keras.layers import RandomFlip, Conv2D, GroupNormalization, MaxPooling2D, D
 from keras.losses import CategoricalCrossentropy
 from keras.optimizers import Adam
 from keras import Sequential, Input
-from keras.src.saving.saving_api import load_model
+from keras.src.saving.saving_api import load_model, save_model
 from keras.utils import set_random_seed
 from numpy import random
+import keras
+import tensorflow as tf
 
 
 class DatasetWithForcedDistribution:
@@ -209,3 +211,74 @@ def train_shadow_models(test_run, n_shadow_models, distributed_datasets, model_i
         save_data_path = f"{base_path}/data/shadow_model_outputs/{str(ds.distribution)}/"
         ensure_path_exists(save_data_path)
         adv_df.to_csv(f"{save_data_path}{'test' if test_run else 'train'}.csv", index=False)
+
+
+class DefendingModel(keras.Sequential):
+
+    def __init__(self, adversary, adversary_target, input_for_adversary, training_lambda, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.adversary = adversary
+        self.adversary_target = adversary_target
+        self.input_for_adversary = input_for_adversary
+        self.training_lambda = training_lambda
+        self.adversary_metric = keras.metrics.Mean(name='adversary_prediction')
+
+    @tf.function
+    def train_step(self, data):
+        x, y = data
+        if self.training_lambda > 0:
+            with tf.GradientTape() as tape:
+                # DEFENSE
+                y_pred_for_adv = self(self.input_for_adversary, training=True)
+                my_x = tf.reshape(y_pred_for_adv[:, 0], (1, y_pred_for_adv.shape[0]))
+                adv_pred = self.adversary(my_x, training=False)
+                my_y = tf.convert_to_tensor([[self.adversary_target]])
+                # TRAINING
+                y_pred = self(x, training=True)
+
+                loss_adv = keras.losses.mean_squared_error(my_y, adv_pred)
+                loss_train = self.compute_loss(x, y, y_pred)
+                combined_loss = (1 - self.training_lambda) * loss_train + self.training_lambda * loss_adv
+
+            self._loss_tracker.update_state(combined_loss)
+            combined_loss = self.optimizer.scale_loss(combined_loss)
+            gradients = tape.gradient(combined_loss, self.trainable_variables)
+            self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+        else:
+            y_pred_for_adv = self(self.input_for_adversary, training=True)
+            my_x = tf.reshape(y_pred_for_adv[:, 0], (1, y_pred_for_adv.shape[0]))
+            adv_pred = self.adversary(my_x, training=False)
+            with tf.GradientTape() as tape:
+                # TRAINING
+                y_pred = self(x, training=True)
+                combined_loss = self.compute_loss(x, y, y_pred)
+
+            self._loss_tracker.update_state(combined_loss)
+            combined_loss = self.optimizer.scale_loss(combined_loss)
+            gradients = tape.gradient(combined_loss, self.trainable_variables)
+            self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+        # Update adversary prediction metric
+        self.adversary_metric.update_state(adv_pred)
+
+        # Update model loss
+        metrics = self.compute_metrics(x, y, y_pred)
+        metrics.update({'adversary_prediction': self.adversary_metric.result()})
+        return metrics
+
+    def save_inner_model(self, filepath):
+        seq = keras.Sequential(self.layers)
+        seq = compile_categorical_model(seq)
+        save_model(seq, filepath)
+
+
+def get_defending_lucasnet_model(adversary, adversary_target, input_for_adversary, training_lambda, num_classes, input_shape):
+    return DefendingModel(adversary, adversary_target, input_for_adversary, training_lambda, get_lucasnet_sequence(num_classes, input_shape))
+
+
+def compile_categorical_model(model):
+    model.compile(
+        optimizer=Adam(),
+        loss=CategoricalCrossentropy(),
+        metrics=['accuracy']
+    )
+    return model
