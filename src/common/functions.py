@@ -218,7 +218,7 @@ class DefendingModel(keras.Sequential):
     def __init__(self, adversary, adversary_target, input_for_adversary, training_lambda, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.adversary = adversary
-        self.adversary_target = adversary_target
+        self.adversary_target = tf.convert_to_tensor([[adversary_target]])
         self.input_for_adversary = input_for_adversary
         self.training_lambda = training_lambda
         self.adversary_metric = keras.metrics.Mean(name='adversary_prediction')
@@ -230,18 +230,23 @@ class DefendingModel(keras.Sequential):
             with tf.GradientTape() as tape:
                 # DEFENSE
                 y_pred_for_adv = self(self.input_for_adversary, training=True)
-                my_x = tf.reshape(y_pred_for_adv[:, 0], (1, y_pred_for_adv.shape[0]))
+                # last column of prediction is redundant
+                num_columns = y_pred_for_adv.shape[1]-1
+                y_pred_for_adv = y_pred_for_adv[:, 0:num_columns]
+                y_pred_for_adv = Flatten()(y_pred_for_adv)
+                # reshape as model input
+                my_x = tf.reshape(y_pred_for_adv, (1, y_pred_for_adv.shape[0]*y_pred_for_adv.shape[1]))
+                # get adversary prediction
                 adv_pred = self.adversary(my_x, training=False)
-                my_y = tf.convert_to_tensor([[self.adversary_target]])
                 # TRAINING
                 y_pred = self(x, training=True)
 
-                loss_adv = keras.losses.mean_squared_error(my_y, adv_pred)
+                loss_adv = keras.losses.mean_squared_error(self.adversary_target, adv_pred)
                 loss_train = self.compute_loss(x, y, y_pred)
                 combined_loss = (1 - self.training_lambda) * loss_train + self.training_lambda * loss_adv
 
-            self._loss_tracker.update_state(combined_loss)
-            combined_loss = self.optimizer.scale_loss(combined_loss)
+            #self._loss_tracker.update_state(combined_loss)
+            #combined_loss = self.optimizer.scale_loss(combined_loss)
             gradients = tape.gradient(combined_loss, self.trainable_variables)
             self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         else:
@@ -261,7 +266,7 @@ class DefendingModel(keras.Sequential):
         self.adversary_metric.update_state(adv_pred)
 
         # Update model loss
-        metrics = self.compute_metrics(x, y, y_pred)
+        metrics = self.compute_metrics(x, y, y_pred, sample_weight=None)
         metrics.update({'adversary_prediction': self.adversary_metric.result()})
         return metrics
 

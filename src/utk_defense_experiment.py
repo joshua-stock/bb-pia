@@ -8,12 +8,18 @@ from utk_functions import get_lbfw_dataset, get_distributed_utk_sets
 from datetime import datetime
 from common.functions import get_defending_lucasnet_model, compile_categorical_model, ensure_path_exists
 
+
+affinity_mask = set()
+for i in range(10):
+    affinity_mask.add(i)
+os.sched_setaffinity(0, affinity_mask)
+
 resultspath = "utkface/results/"
 ensure_path_exists(resultspath)
-adversary = keras.models.load_model('utkface/models/adv_v1_0.76_r2.keras')
+adversary = keras.models.load_model('utkface/models/adv_v1_0.75_r2.keras')
 model_input = get_lbfw_dataset()
-distributed_datasets = get_distributed_utk_sets()
-lambdas = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25]
+#distributed_datasets = get_distributed_utk_sets()
+lambdas = [0.05, 0.1, 0.15, 0.2, 0.25, 0.0]
 runs = 10
 time = datetime.now().strftime('%Y%m%d-%H%M%S')
 resultsfile = f"{resultspath}utk_defense_results-{time}.csv"
@@ -27,9 +33,10 @@ def set_seeds(training_lambda, run, distribution):
     tf.random.set_seed(seed)
 
 
-for run in range(runs):
+for dis in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+    ds = get_distributed_utk_sets(distributions=[dis])[0]
     for training_lambda in lambdas:
-        for ds in distributed_datasets:
+        for run in range(runs):
             save_path = f"utkface/models/defense/"
             ensure_path_exists(save_path)
             model_save_path = f"{save_path}utkdef-ds{ds.distribution}-l{training_lambda}-run{run}.keras"
@@ -64,7 +71,7 @@ for run in range(runs):
             output = model.predict(model_input)
             formatted_input = output[:, 0].reshape(1, output.shape[0])
             adv_out = adversary(formatted_input).numpy().flatten()[0]
-            test_acc = model.evaluate(ds.X_train, ds.y_train)[2]
+            test_acc = model.evaluate(ds.X_train, ds.y_train)
 
             with open(resultsfile, 'a', newline='') as csvfile:
                 resultwriter = csv.writer(csvfile, delimiter=';', quotechar='|', quoting=csv.QUOTE_MINIMAL)
