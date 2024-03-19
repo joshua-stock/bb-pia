@@ -13,7 +13,7 @@ ensure_path_exists(resultspath)
 adversary = keras.models.load_model('utkface/models/adv_v1_0.76_r2.keras')
 model_input = get_lbfw_dataset()
 distributed_datasets = get_distributed_utk_sets()
-lambdas = [0.0, 0.25, 0.5, 0.75, 1.0]
+lambdas = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25]
 runs = 10
 time = datetime.now().strftime('%Y%m%d-%H%M%S')
 resultsfile = f"{resultspath}utk_defense_results-{time}.csv"
@@ -29,11 +29,12 @@ def set_seeds(training_lambda, run, distribution):
 
 for run in range(runs):
     for training_lambda in lambdas:
-        if training_lambda == 0.0 and run == 0:
-            continue
         for ds in distributed_datasets:
             save_path = f"utkface/models/defense/"
             ensure_path_exists(save_path)
+            model_save_path = f"{save_path}utkdef-ds{ds.distribution}-l{training_lambda}-run{run}.keras"
+            if os.path.exists(model_save_path):
+                continue
             logs = f"logs/utkdef-ds{ds.distribution}-l{training_lambda}-run{run}-{time}"
             print(f"Now training ds{ds.distribution}-l{training_lambda}-run{run}-{time}")
             tboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logs,
@@ -56,14 +57,15 @@ for run in range(runs):
                 epochs=4,
                 validation_data=(ds.X_train, ds.y_train),
                 batch_size=32,
-                callbacks=[tboard_callback])
-            model.save_inner_model(f"{save_path}utkdef-ds{ds.distribution}-l{training_lambda}-run{run}.keras")
+                callbacks=[tboard_callback],
+                verbose=0)
+            model.save_inner_model(model_save_path)
 
             output = model.predict(model_input)
             formatted_input = output[:, 0].reshape(1, output.shape[0])
             adv_out = adversary(formatted_input).numpy().flatten()[0]
-            test_acc = model.evaluate(ds.X_train, ds.y_train)[1]
+            test_acc = model.evaluate(ds.X_train, ds.y_train)[2]
 
             with open(resultsfile, 'a', newline='') as csvfile:
                 resultwriter = csv.writer(csvfile, delimiter=';', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-                resultwriter.writerow([training_lambda, ds.distribution, run, test_acc, adv_out])
+                resultwriter.writerow([training_lambda, ds.distribution, run, str(test_acc), adv_out])
