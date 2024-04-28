@@ -18,7 +18,7 @@ def generate_adv_input(test_run, n_shadow_models, distributions, model_input):
 
 if __name__ == "__main__":
     test_run = False
-    n_shadow_models = 400
+    n_shadow_models = 200
     distributions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     model_input = pd.read_csv("adult/data/syn_data-new.csv")
     generate_adv_input(test_run, n_shadow_models, distributions, model_input)
