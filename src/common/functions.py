@@ -287,3 +287,105 @@ def compile_categorical_model(model):
         metrics=['accuracy']
     )
     return model
+
+
+class DefendingFairnessModel(keras.Sequential):
+    def __init__(self, pia_adversary, adv_input, sensitive, training_lambda, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pia_adversary = pia_adversary
+        self.adv_input = adv_input
+        self.sensitive = sensitive
+        self.training_lambda = training_lambda
+        self.adversary_predictions = []
+        self.p_rule_values = []
+
+        # Initialize TensorFlow variables for the fairness adversary
+        self.init_fairness_adversary()
+
+    @staticmethod
+    def p_rule(y_pred, z_values):
+        threshold = 0.5
+        y_z_1 = tf.cast(y_pred[z_values == 1] > threshold, dtype=tf.float16)
+        y_z_0 = tf.cast(y_pred[z_values == 0] > threshold, dtype=tf.float16)
+        odds = tf.reduce_mean(y_z_1) / tf.reduce_mean(y_z_0)
+        return tf.minimum(odds, 1/odds)
+
+    def init_fairness_adversary(self):
+        adv = keras.Sequential([
+            # num classes
+            Input(shape=(2,)),
+            Dense(5, activation='relu'),
+            Dense(1, activation='sigmoid')
+        ])
+        adv.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        self.adversary = adv
+
+    def train_fairness_adversary(self, y_pred_for_adv):
+        with tf.GradientTape() as tape:
+            # Forward pass
+            adv_pred = self.adversary(y_pred_for_adv)
+            # Compute the loss value
+            adv_loss = tf.keras.losses.BinaryCrossentropy()(self.sensitive, adv_pred)
+
+        # Compute gradients
+        trainable_vars = self.adversary.trainable_variables
+        gradients = tape.gradient(adv_loss, trainable_vars)
+
+        # Update weights
+        self.adversary.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+    #def train_pia_adversary(
+
+    @tf.function
+    def train_step(self, data):
+        x, y = data
+
+        y_pred_for_adv = self(x, training=False)
+
+        # Train the fairness adversary
+        self.train_fairness_adversary(y_pred_for_adv)
+
+        with tf.GradientTape() as tape:
+            y_pred_for_adv = self(x, training=False)
+            #y_pred_for_adv = tf.expand_dims(tf.cast(y_pred_for_adv, dtype=tf.float32), axis=1)
+
+            adv_pred = self.adversary(y_pred_for_adv, training=False)
+            adv_loss = tf.keras.losses.BinaryCrossentropy()(self.sensitive, adv_pred)
+
+            y_pred = self(x, training=True)
+            loss_train = self.compute_loss(x, y, y_pred)
+            combined_loss = loss_train * (1-self.training_lambda) + self.training_lambda * adv_loss
+
+        gradients = tape.gradient(combined_loss, self.trainable_variables)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+
+        metrics = self.compute_metrics(x, y, y_pred, sample_weight=None)
+
+        return metrics
+
+    def save_inner_model(self, filepath):
+        seq = keras.Sequential(self.layers)
+        seq = compile_categorical_model(seq)
+        save_model(seq, filepath)
+
+
+def compile_categorical_model(model):
+    model.compile(
+        optimizer=Adam(),
+        loss=CategoricalCrossentropy(),
+        metrics=['accuracy']
+    )
+    return model
+
+
+def get_fairness_lucasnet_model(pia_adversary, adversary_input, sensitive, training_lambda, num_classes, input_shape):
+    return DefendingFairnessModel(pia_adversary, adversary_input, sensitive, training_lambda, get_lucasnet_sequence(num_classes, input_shape))
+
+
+def set_seeds(training_lambda, run, distribution):
+    seed = int(training_lambda * 1000 + distribution * 100 + run)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
