@@ -9,8 +9,8 @@ from common.functions import get_fairness_lucasnet_model, ensure_path_exists, se
 import tensorflow as tf
 
 
-distributions = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
-resultspath = 'utkface/results/fairness-3/'
+distributions = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+resultspath = 'utkface/results/fairness-4/'
 epochs = 18
 early_stopping = False
 
@@ -27,9 +27,9 @@ manual_adversary.load_weights("utkface/models/manual_tuning_checkpoints-2/keras.
 
 for run in range(10):
     for dataset in datasets:
-        for training_lambda in [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4]:
+        for training_lambda in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]:
             print(f"now running run {run}, dist {dataset.distribution}, training lambda {training_lambda}")
-            sensitive_categorical = dataset.sensitive  # tf.keras.utils.to_categorical(dataset.sensitive)
+            sensitive_categorical = tf.keras.utils.to_categorical(dataset.sensitive)
             model = get_fairness_lucasnet_model(
                 manual_adversary,
                 input_set,

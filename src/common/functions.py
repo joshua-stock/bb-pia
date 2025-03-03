@@ -5,7 +5,7 @@ import pandas as pd
 import os
 from keras.layers import RandomFlip, Conv2D, GroupNormalization, MaxPooling2D, Dense, Flatten
 from keras.losses import CategoricalCrossentropy
-from keras.optimizers import Adam
+from keras.optimizers import Adam, SGD
 from keras import Sequential, Input
 from keras.src.saving.saving_api import load_model, save_model
 from keras.utils import set_random_seed
@@ -314,19 +314,23 @@ class DefendingFairnessModel(keras.Sequential):
         adv = keras.Sequential([
             # num classes
             Input(shape=(2,)),
-            Dense(5, activation='relu'),
-            Dense(1, activation='sigmoid')
+            Dense(5, activation='relu'), # 2-relu-SGD mit LR 0.05 funktioniert
+            Dense(2, activation='softmax')
         ])
-        adv.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        adv.compile(optimizer=Adam(), loss=CategoricalCrossentropy, metrics=['accuracy'])
+        self.init_adv_weights = adv.get_weights()
         self.adversary = adv
 
-    def train_fairness_adversary(self, y_pred_for_adv):
+    def train_fairness_adversary(self, y_pred_for_adv, i):
         with tf.GradientTape() as tape:
             # Forward pass
             adv_pred = self.adversary(y_pred_for_adv)
             # Compute the loss value
-            adv_loss = tf.keras.losses.BinaryCrossentropy()(self.sensitive, adv_pred)
+            adv_loss = tf.keras.losses.CategoricalCrossentropy()(self.sensitive, adv_pred)
 
+        # print every 10th iteration
+        if i % 50 == 0:
+            tf.print("adv. loss: ", adv_loss)
         # Compute gradients
         trainable_vars = self.adversary.trainable_variables
         gradients = tape.gradient(adv_loss, trainable_vars)
@@ -342,19 +346,22 @@ class DefendingFairnessModel(keras.Sequential):
 
         y_pred_for_adv = self(x, training=False)
 
+        # reset adversary weights
+        self.adversary.set_weights(self.init_adv_weights)
         # Train the fairness adversary
-        self.train_fairness_adversary(y_pred_for_adv)
+        for i in range(151):
+            self.train_fairness_adversary(y_pred_for_adv, i)
 
         with tf.GradientTape() as tape:
             y_pred_for_adv = self(x, training=False)
             #y_pred_for_adv = tf.expand_dims(tf.cast(y_pred_for_adv, dtype=tf.float32), axis=1)
 
             adv_pred = self.adversary(y_pred_for_adv, training=False)
-            adv_loss = tf.keras.losses.BinaryCrossentropy()(self.sensitive, adv_pred)
+            adv_loss = tf.keras.losses.CategoricalCrossentropy()(self.sensitive, adv_pred)
 
             y_pred = self(x, training=True)
             loss_train = self.compute_loss(x, y, y_pred)
-            combined_loss = loss_train * (1-self.training_lambda) + self.training_lambda * adv_loss
+            combined_loss = loss_train * (1-self.training_lambda) - self.training_lambda * adv_loss
 
         gradients = tape.gradient(combined_loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
@@ -368,14 +375,6 @@ class DefendingFairnessModel(keras.Sequential):
         seq = compile_categorical_model(seq)
         save_model(seq, filepath)
 
-
-def compile_categorical_model(model):
-    model.compile(
-        optimizer=Adam(),
-        loss=CategoricalCrossentropy(),
-        metrics=['accuracy']
-    )
-    return model
 
 
 def get_fairness_lucasnet_model(pia_adversary, adversary_input, sensitive, training_lambda, num_classes, input_shape):
