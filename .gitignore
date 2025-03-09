@@ -4,6 +4,14 @@ __pycache__/
 *__pycache__*
 nohup.out
 
+src/cifar_new/
+src/cifar_new_new/
+src/cifar_new100/
+src/cifar_new200/
+src/cifar_new201/
+src/cifar_new202/
+src/cifar/models/defense/
+src/utkface/models/defense/
 src/utkface/models/shadow_models
 src/utkface/models/manual_tuning_checkpoints/
 

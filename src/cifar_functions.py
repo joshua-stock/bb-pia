@@ -87,3 +87,12 @@ def get_cifar_input_set():
     return x_shrunk
 
 
+def cifar_adversary(input_shape):
+    adversary = keras.Sequential()
+    adversary.add(keras.Input(shape=input_shape))
+    adversary.add(keras.layers.Dense(30, activation='relu'))#, kernel_regularizer=regularizers.l2(0.01)))
+    adversary.add(keras.layers.Dropout(0.05))
+    adversary.add(keras.layers.Dense(8, activation='relu'))#, kernel_regularizer=regularizers.l2(0.04)))
+    adversary.add(keras.layers.Dense(1))
+    adversary.compile(optimizer=keras.optimizers.Adam(), loss=keras.losses.MeanSquaredError(), metrics=[keras.metrics.R2Score()])
+    return adversary
